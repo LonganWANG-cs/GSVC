@@ -68,16 +68,18 @@ This step allows GSVC to detect significant changes in the scene.
 
 ```shell
 # SSH
-git git@github.com:LonganWANG-cs/GaussianVideo.git
+git clone git@github.com:LonganWANG-cs/GaussianVideo.git
 ```
 or
 ```shell
 # HTTPS
-git https://github.com/LonganWANG-cs/GaussianVideo.git
+git clone https://github.com/LonganWANG-cs/GaussianVideo.git
 ```
 After cloning the repository, you can follow these steps to train GSVC models under different tasks. 
 
 ### Requirements
+
+We are using `python version 3.9` and `torch cuda runtime 12.4`. Before running the below code, please make sure `torch` is installed.
 
 ```bash
 cd gsplat
