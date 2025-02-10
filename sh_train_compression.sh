@@ -9,12 +9,13 @@
 #SBATCH --mail-user=wanglongan@comp.nus.edu.sg # Email for notifications
 #SBATCH --mem=16G                    # Request 16GB of memory
 # Activate the environment if needed
-source activate torch  # Replace 'torch' with the name of your conda environment
+source ~/.bashrc
+conda activate torch  # Replace 'torch' with the name of your conda environment
 
 datasets=(
-  "/home/e/e1344641/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv Beauty"
-  "/home/e/e1344641/data/UVG/HoneyBee/HoneyBee_1920x1080_120fps_420_8bit_YUV.yuv HoneyBee"
-  "/home/e/e1344641/data/UVG/Jockey/Jockey_1920x1080_120fps_420_8bit_YUV.yuv Jockey"
+  "/home/e/e1344641/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv Beauty" # todo: change this path
+  "/home/e/e1344641/data/UVG/HoneyBee/HoneyBee_1920x1080_120fps_420_8bit_YUV.yuv HoneyBee" # todo: change this path
+  "/home/e/e1344641/data/UVG/Jockey/Jockey_1920x1080_120fps_420_8bit_YUV.yuv Jockey" # todo: change this path
 )
 
 savdir="GaussianVideo_results"
@@ -29,7 +30,7 @@ for dataset in "${datasets[@]}"; do
   data_name=$(echo $dataset | cut -d' ' -f2)
   for num_points in  10000  20000 30000 40000 50000; do
     for iterations in 100000; do
-      model_path="/home/e/e1344641/GaussianVideo/checkpoints/GaussianVideo_models/${data_name}/GaussianVideo_${iterations}_${num_points}/gmodels_state_dict.pth"
+      model_path="/home/e/e1344641/GaussianVideo/checkpoints/GaussianVideo_models/${data_name}/GaussianVideo_${iterations}_${num_points}/gmodels_state_dict.pth" # todo: change this path
     
       pos_flag=""
       ad_flag=""
