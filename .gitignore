@@ -8,3 +8,4 @@ output/
 Loadmodel/
 push.bat
 
+__pycache__/
