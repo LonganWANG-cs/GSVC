@@ -185,6 +185,7 @@ def generate_video(videodir,image_list, data_name, model_name,fps,iterations,num
 
 
 
+
 class EarlyStopping:
     def __init__(self, patience=100, min_delta=0):
         self.patience = patience  # Number of tolerated iterations with no improvement
