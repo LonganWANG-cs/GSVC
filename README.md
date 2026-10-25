@@ -101,7 +101,7 @@ python -m pip install torch==2.3.1 torchvision==0.18.1 \
 python -m pip install -r requirements.txt
 ```
 
-The PyTorch command follows the [official installation instructions](https://pytorch.org/get-started/previous-versions/#v231). `requirements.txt` references the original `reqirements.txt`; either filename works.
+The PyTorch command follows the [official installation instructions](https://pytorch.org/get-started/previous-versions/#v231). Python dependencies are listed in `requirements.txt`.
 
 #### Install gsplat
 
@@ -153,8 +153,7 @@ Alternatively, set both defaults to `"1"` in `gsvc_runtime.py`. Initialization s
 ├── gsplat/                    # Bundled Python/CUDA rasterization extension.
 ├── ensure_gsvc_gsplat.sh       # Install/check the bundled CUDA extension.
 ├── sh_train_GSVC_example.sh    # Optional batch example running all three stages.
-├── requirements.txt           # Standard dependency-list entry point.
-├── reqirements.txt            # Runtime dependency list, retaining the original name.
+├── requirements.txt           # Python runtime dependencies.
 ├── checkpoints/               # Generated overfitting models, logs, and previews.
 ├── checkpoints_quant/         # Generated quantized models and decoded previews.
 └── output/                    # Optional batch-job logs.
