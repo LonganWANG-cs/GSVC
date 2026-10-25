@@ -4,7 +4,7 @@
 [![GitHub Repo stars](https://img.shields.io/github/stars/LonganWANG-cs/GSVC?style=social&label=Star
 )](https://github.com/LonganWANG-cs/GSVC)
 
-[[paper](https://arxiv.org/abs/2501.12060)][[project page](https://yuang-ian.github.io/gsvc/)][[code](https://github.com/LonganWANG-cs/GSVC)]
+[[paper](https://arxiv.org/abs/2501.12060)][[project page](https://longanwang-cs.github.io/gsvc/)][[code](https://github.com/LonganWANG-cs/GSVC)]
 
 [Longan Wang](https://longanwang-cs.github.io/), [Yuang Shi](https://yuang-ian.github.io/), [Wei Tsang Ooi📧](https://www.comp.nus.edu.sg/~ooiwt/)
 (📧 denotes corresponding author.)
