@@ -1,12 +1,60 @@
 """Python bindings for binning and sorting gaussians"""
 
 from typing import Tuple
+import os
 
 from jaxtyping import Float, Int
 from torch import Tensor
 import torch
 
 import gsplat.cuda as _C
+
+
+# --- Intersect-buffer capacity manager (opt3: remove the per-forward D2H sync) --
+#
+# compute_cumulative_intersects() historically read cum_tiles_hit[-1].item()
+# every forward to size the tile-intersect buffers. That is a hard device->host
+# sync that blocks CPU run-ahead (and CUDA-graph capture). Instead we run the
+# binning at a *fixed preallocated capacity*: for each resolution (tile_bounds)
+# we take exact counts during a short warmup, then freeze a capacity of
+# SAFETY x observed-max and stop syncing. A device-side assert in the CUDA
+# binding aborts loudly if the capacity ever proves too small (never silent
+# corruption). Set GSPLAT_ISECT_WARMUP=0 to disable (always exact/synced).
+_ISECT_CAP_STATE = {}  # (tiles_x, tiles_y, gaussian_count) -> {"cap", "max_ni", "warm"}
+_ISECT_CAP_WARMUP = int(os.environ.get("GSPLAT_ISECT_WARMUP", "8"))
+_ISECT_CAP_SAFETY = float(os.environ.get("GSPLAT_ISECT_SAFETY", "3.0"))
+
+
+def resolve_intersect_capacity(cum_tiles_hit: Tensor, num_points: int, tile_bounds) -> int:
+    """Capacity for the intersect buffers this forward.
+
+    Keyed by (resolution, Gaussian count): the intersect count depends on both
+    the tile grid AND the number of Gaussians, and the latter changes when
+    densification (--is_ad) grows/prunes points, so keying by resolution alone
+    let a frozen capacity be exceeded after a densify. Each (resolution, count)
+    combination warms up independently: during warmup it returns the exact count
+    (one D2H sync, numerically identical to the pre-opt3 path since the padded
+    tail is then empty) while tracking the max; afterwards it returns a frozen
+    capacity (SAFETY x max) with no sync. SAFETY headroom absorbs the drift of
+    Gaussian footprints within a fixed count/resolution. A device-side assert in
+    the CUDA binding still aborts loudly if the headroom is ever insufficient.
+    """
+    if _ISECT_CAP_WARMUP <= 0:
+        return int(cum_tiles_hit[-1].item()) if num_points > 0 else 0
+    key = (int(tile_bounds[0]), int(tile_bounds[1]), int(num_points))
+    st = _ISECT_CAP_STATE.get(key)
+    if st is None:
+        st = {"cap": None, "max_ni": 0, "warm": 0}
+        _ISECT_CAP_STATE[key] = st
+    if st["cap"] is not None:
+        return st["cap"]  # steady state: no sync
+    ni = int(cum_tiles_hit[-1].item()) if num_points > 0 else 0
+    if ni > st["max_ni"]:
+        st["max_ni"] = ni
+    st["warm"] += 1
+    if st["warm"] >= _ISECT_CAP_WARMUP:
+        st["cap"] = max(1, int(st["max_ni"] * _ISECT_CAP_SAFETY))
+    return ni
 
 
 def map_gaussian_to_intersects(
@@ -51,7 +99,7 @@ def map_gaussian_to_intersects(
 
 
 def get_tile_bin_edges(
-    num_intersects: int, isect_ids_sorted: Int[Tensor, "num_intersects 1"]
+    num_intersects: int, isect_ids_sorted: Int[Tensor, "num_intersects 1"], tile_bounds: Tuple[int, int, int]
 ) -> Int[Tensor, "num_intersects 2"]:
     """Map sorted intersection IDs to tile bins which give the range of unique gaussian IDs belonging to each tile.
 
@@ -71,7 +119,7 @@ def get_tile_bin_edges(
 
         - **tile_bins** (Tensor): range of gaussians IDs hit per tile.
     """
-    return _C.get_tile_bin_edges(num_intersects, isect_ids_sorted.contiguous())
+    return _C.get_tile_bin_edges(num_intersects, isect_ids_sorted.contiguous(), tile_bounds)
 
 
 def compute_cov2d_bounds(
@@ -163,5 +211,5 @@ def bin_and_sort_gaussians(
     )
     isect_ids_sorted, sorted_indices = torch.sort(isect_ids)
     gaussian_ids_sorted = torch.gather(gaussian_ids, 0, sorted_indices)
-    tile_bins = get_tile_bin_edges(num_intersects, isect_ids_sorted)
+    tile_bins = get_tile_bin_edges(num_intersects, isect_ids_sorted,tile_bounds)
     return isect_ids, gaussian_ids, isect_ids_sorted, gaussian_ids_sorted, tile_bins

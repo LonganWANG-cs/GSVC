@@ -138,20 +138,37 @@ __global__ void map_gaussian_to_intersects(
 // kernel to map sorted intersection IDs to tile bins
 // expect that intersection IDs are sorted by increasing tile ID
 // i.e. intersections of a tile are in contiguous chunks
+// Sentinel used to pad the fixed-capacity intersect buffer. Sorted to the end
+// (largest possible int64), and skipped here so the padded tail never indexes
+// tile_bins. Must match ISECT_SENTINEL in bindings.cu / the Python side.
+#define ISECT_SENTINEL 0x7fffffffffffffffLL
+
 __global__ void get_tile_bin_edges(
     const int num_intersects, const int64_t* __restrict__ isect_ids_sorted, int2* __restrict__ tile_bins
 ) {
     unsigned idx = cg::this_grid().thread_rank();
     if (idx >= num_intersects)
         return;
-    // save the indices where the tile_id changes
-    int32_t cur_tile_idx = (int32_t)(isect_ids_sorted[idx] >> 32);
-    if (idx == 0 || idx == num_intersects - 1) {
-        if (idx == 0)
-            tile_bins[cur_tile_idx].x = 0;
-        if (idx == num_intersects - 1)
-            tile_bins[cur_tile_idx].y = num_intersects;
+    int64_t cur = isect_ids_sorted[idx];
+    // Padded tail: the FIRST sentinel entry closes the range of the last real
+    // tile (its index is the true intersect count R); all sentinels then return.
+    if (cur == ISECT_SENTINEL) {
+        if (idx > 0) {
+            int64_t prev = isect_ids_sorted[idx - 1];
+            if (prev != ISECT_SENTINEL) {
+                int32_t prev_tile_idx = (int32_t)(prev >> 32);
+                tile_bins[prev_tile_idx].y = idx;
+            }
+        }
+        return;
     }
+    // save the indices where the tile_id changes
+    int32_t cur_tile_idx = (int32_t)(cur >> 32);
+    if (idx == 0)
+        tile_bins[cur_tile_idx].x = 0;
+    // All-real case (capacity == R, no padding): last entry closes its tile.
+    if (idx == num_intersects - 1)
+        tile_bins[cur_tile_idx].y = num_intersects;
     if (idx == 0)
         return;
     int32_t prev_tile_idx = (int32_t)(isect_ids_sorted[idx - 1] >> 32);

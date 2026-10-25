@@ -8,15 +8,55 @@
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <iostream>
 #include <math.h>
 #include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>  // at::cuda::getCurrentCUDAStream()
 #include <tuple>
 
 namespace cg = cooperative_groups;
+
+// ---- FASTGSVC_DET_ATOMICS -------------------------------------------------
+//
+// `rasterize_backward_sum_kernel` sums each Gaussian's gradient with float
+// `atomicAdd`, whose result depends on the order the warps arrive in, so two
+// identical runs differ in the last bits and then diverge over training.  With
+// FASTGSVC_DET_ATOMICS=1 the kernel accumulates into int64 fixed point instead,
+// which is exactly associative and therefore bitwise reproducible.
+//
+// Read once and cached: the flag must not change between the capture and the
+// replay of a CUDA graph.
+static bool det_atomics_enabled() {
+    static int cached = -1;
+    if (cached < 0) {
+        const char* s = std::getenv("FASTGSVC_DET_ATOMICS");
+        cached = (s != nullptr && std::strcmp(s, "1") == 0) ? 1 : 0;
+    }
+    return cached == 1;
+}
+
+// 2^FASTGSVC_DET_ATOMICS_SCALE_LOG2, default 2^40 -- resolution 9.1e-13,
+// saturation at +/-8.4e6.  Overflow wraps silently, so validate_det_atomics.py
+// compares the fixed-point gradients against the float ones before any run.
+static double det_atomics_scale() {
+    static double cached = 0.0;
+    if (cached == 0.0) {
+        const char* s = std::getenv("FASTGSVC_DET_ATOMICS_SCALE_LOG2");
+        const int shift = (s != nullptr) ? std::atoi(s) : 40;
+        if (shift < 1 || shift > 62) {
+            AT_ERROR("FASTGSVC_DET_ATOMICS_SCALE_LOG2 must be in [1, 62]");
+        }
+        cached = std::ldexp(1.0, shift);
+    }
+    return cached;
+}
+
 
 __global__ void compute_cov2d_bounds_kernel(
     const unsigned num_pts, const float* __restrict__ covs2d, float* __restrict__ conics, float* __restrict__ radii
@@ -51,7 +91,7 @@ compute_cov2d_bounds_tensor(const int num_pts, torch::Tensor &covs2d) {
 
     int blocks = (num_pts + N_THREADS - 1) / N_THREADS;
 
-    compute_cov2d_bounds_kernel<<<blocks, N_THREADS>>>(
+    compute_cov2d_bounds_kernel<<<blocks, N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_pts,
         covs2d.contiguous().data_ptr<float>(),
         conics.contiguous().data_ptr<float>(),
@@ -75,7 +115,7 @@ torch::Tensor compute_sh_forward_tensor(
     torch::Tensor colors = torch::empty({num_points, 3}, coeffs.options());
     compute_sh_forward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         degree,
         degrees_to_use,
@@ -106,7 +146,7 @@ torch::Tensor compute_sh_backward_tensor(
         torch::zeros({num_points, num_bases, 3}, v_colors.options());
     compute_sh_backward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         degree,
         degrees_to_use,
@@ -169,7 +209,7 @@ project_gaussians_forward_tensor(
 
     project_gaussians_forward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float3 *)means3d.contiguous().data_ptr<float>(),
         (float3 *)scales.contiguous().data_ptr<float>(),
@@ -244,7 +284,7 @@ project_gaussians_backward_tensor(
 
     project_gaussians_backward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float3 *)means3d.contiguous().data_ptr<float>(),
         (float3 *)scales.contiguous().data_ptr<float>(),
@@ -271,9 +311,26 @@ project_gaussians_backward_tensor(
     return std::make_tuple(v_cov2d, v_cov3d, v_mean3d, v_scale, v_quat);
 }
 
+// Sentinel padding value for the fixed-capacity intersect buffer. Must match
+// ISECT_SENTINEL in forward.cu and the Python capacity manager.
+#define ISECT_SENTINEL 0x7fffffffffffffffLL
+
+// Device-side guard: aborts (loudly, no host sync) if the true intersect count
+// exceeds the preallocated buffer capacity, so a too-small capacity can never
+// silently corrupt the raster.
+__global__ void assert_intersect_capacity(
+    const int32_t* __restrict__ cum_tiles_hit, const int num_points, const int capacity
+) {
+    if (num_points > 0) {
+        const int32_t total = cum_tiles_hit[num_points - 1];
+        CUDA_KERNEL_ASSERT(total <= capacity &&
+            "gsplat: intersect count exceeded preallocated capacity");
+    }
+}
+
 std::tuple<torch::Tensor, torch::Tensor> map_gaussian_to_intersects_tensor(
     const int num_points,
-    const int num_intersects,
+    const int num_intersects,   // buffer capacity (>= true intersect count)
     const torch::Tensor &xys,
     const torch::Tensor &depths,
     const torch::Tensor &radii,
@@ -290,14 +347,24 @@ std::tuple<torch::Tensor, torch::Tensor> map_gaussian_to_intersects_tensor(
     tile_bounds_dim3.y = std::get<1>(tile_bounds);
     tile_bounds_dim3.z = std::get<2>(tile_bounds);
 
+    // Capacity guard (no host sync). If num_intersects is the exact count this
+    // is trivially satisfied; if it is an over-provisioned capacity, the padded
+    // tail below is what makes the extra slots harmless.
+    assert_intersect_capacity<<<1, 1, 0, at::cuda::getCurrentCUDAStream()>>>(
+        cum_tiles_hit.contiguous().data_ptr<int32_t>(), num_points, num_intersects
+    );
+
     torch::Tensor gaussian_ids_unsorted =
         torch::zeros({num_intersects}, xys.options().dtype(torch::kInt32));
+    // Sentinel-fill so any unwritten (padded) tail entries sort to the very end
+    // and are skipped by get_tile_bin_edges.
     torch::Tensor isect_ids_unsorted =
-        torch::zeros({num_intersects}, xys.options().dtype(torch::kInt64));
+        torch::full({num_intersects}, (int64_t)ISECT_SENTINEL,
+                    xys.options().dtype(torch::kInt64));
 
     map_gaussian_to_intersects<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float2 *)xys.contiguous().data_ptr<float>(),
         depths.contiguous().data_ptr<float>(),
@@ -312,16 +379,41 @@ std::tuple<torch::Tensor, torch::Tensor> map_gaussian_to_intersects_tensor(
     return std::make_tuple(isect_ids_unsorted, gaussian_ids_unsorted);
 }
 
+// torch::Tensor get_tile_bin_edges_tensor(
+//     int num_intersects, const torch::Tensor &isect_ids_sorted
+// ) {
+//     CHECK_INPUT(isect_ids_sorted);
+//     torch::Tensor tile_bins = torch::zeros(
+//         {num_intersects, 2}, isect_ids_sorted.options().dtype(torch::kInt32)
+//     );
+//     get_tile_bin_edges<<<
+//         (num_intersects + N_THREADS - 1) / N_THREADS,
+//         N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+//         num_intersects,
+//         isect_ids_sorted.contiguous().data_ptr<int64_t>(),
+//         (int2 *)tile_bins.contiguous().data_ptr<int>()
+//     );
+//     return tile_bins;
+// }
+
 torch::Tensor get_tile_bin_edges_tensor(
-    int num_intersects, const torch::Tensor &isect_ids_sorted
+    int num_intersects, 
+    const torch::Tensor &isect_ids_sorted,
+    const std::tuple<int, int, int>& tile_bounds  // Add tile_bounds parameter
 ) {
     CHECK_INPUT(isect_ids_sorted);
+    
+    // Calculate total number of tiles
+    const int total_tiles = std::get<0>(tile_bounds) * std::get<1>(tile_bounds);
+    
+    // Initialize for ALL tiles (not just intersections)
     torch::Tensor tile_bins = torch::zeros(
-        {num_intersects, 2}, isect_ids_sorted.options().dtype(torch::kInt32)
+        {total_tiles, 2}, isect_ids_sorted.options().dtype(torch::kInt32)
     );
+
     get_tile_bin_edges<<<
         (num_intersects + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_intersects,
         isect_ids_sorted.contiguous().data_ptr<int64_t>(),
         (int2 *)tile_bins.contiguous().data_ptr<int>()
@@ -379,7 +471,7 @@ rasterize_forward_tensor(
         {img_height, img_width}, xys.options().dtype(torch::kInt32)
     );
 
-    rasterize_forward<<<tile_bounds_dim3, block_dim3>>>(
+    rasterize_forward<<<tile_bounds_dim3, block_dim3, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds_dim3,
         img_size_dim3,
         gaussian_ids_sorted.contiguous().data_ptr<int32_t>(),
@@ -450,7 +542,7 @@ std::tuple<
         {img_height, img_width}, xys.options().dtype(torch::kInt32)
     );
 
-    rasterize_forward_sum<<<tile_bounds_dim3, block_dim3>>>(
+    rasterize_forward_sum<<<tile_bounds_dim3, block_dim3, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds_dim3,
         img_size_dim3,
         gaussian_ids_sorted.contiguous().data_ptr<int32_t>(),
@@ -521,7 +613,7 @@ std::tuple<
         {img_height, img_width}, xys.options().dtype(torch::kInt32)
     );
 
-    nd_rasterize_forward<<<tile_bounds_dim3, block_dim3>>>(
+    nd_rasterize_forward<<<tile_bounds_dim3, block_dim3, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds_dim3,
         img_size_dim3,
         channels,
@@ -603,7 +695,7 @@ std::
         workspace = torch::zeros({0}, xys.options().dtype(torch::kFloat32));
     }
 
-    nd_rasterize_backward_kernel<<<tile_bounds, block>>>(
+    nd_rasterize_backward_kernel<<<tile_bounds, block, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds,
         img_size,
         channels,
@@ -680,7 +772,7 @@ std::
         torch::zeros({num_points, channels}, xys.options());
     torch::Tensor v_opacity = torch::zeros({num_points, 1}, xys.options());
 
-    rasterize_backward_kernel<<<tile_bounds, block>>>(
+    rasterize_backward_kernel<<<tile_bounds, block, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds,
         img_size,
         gaussians_ids_sorted.contiguous().data_ptr<int>(),
@@ -755,7 +847,19 @@ std::
         torch::zeros({num_points, channels}, xys.options());
     torch::Tensor v_opacity = torch::zeros({num_points, 1}, xys.options());
 
-    rasterize_backward_sum_kernel<<<tile_bounds, block>>>(
+    // FASTGSVC_DET_ATOMICS: accumulate each Gaussian's gradient in int64 fixed
+    // point rather than float, so the total does not depend on the order the
+    // warps arrive in.  Allocated empty (and passed as null) when off, so the
+    // default path costs nothing.
+    const bool det = det_atomics_enabled();
+    const double fx_scale = det ? det_atomics_scale() : 0.0;
+    const auto fx_opts = xys.options().dtype(torch::kInt64);
+    torch::Tensor v_xy_fx = torch::zeros({det ? num_points : 0, 2}, fx_opts);
+    torch::Tensor v_conic_fx = torch::zeros({det ? num_points : 0, 3}, fx_opts);
+    torch::Tensor v_colors_fx = torch::zeros({det ? num_points : 0, channels}, fx_opts);
+    torch::Tensor v_opacity_fx = torch::zeros({det ? num_points : 0, 1}, fx_opts);
+
+    rasterize_backward_sum_kernel<<<tile_bounds, block, 0, at::cuda::getCurrentCUDAStream()>>>(
         tile_bounds,
         img_size,
         gaussians_ids_sorted.contiguous().data_ptr<int>(),
@@ -772,8 +876,36 @@ std::
         (float2 *)v_xy.contiguous().data_ptr<float>(),
         (float3 *)v_conic.contiguous().data_ptr<float>(),
         (float3 *)v_colors.contiguous().data_ptr<float>(),
-        v_opacity.contiguous().data_ptr<float>()
+        v_opacity.contiguous().data_ptr<float>(),
+        det ? (long long *)v_xy_fx.data_ptr<int64_t>() : nullptr,
+        det ? (long long *)v_conic_fx.data_ptr<int64_t>() : nullptr,
+        det ? (long long *)v_colors_fx.data_ptr<int64_t>() : nullptr,
+        det ? (long long *)v_opacity_fx.data_ptr<int64_t>() : nullptr,
+        fx_scale,
+        det
     );
+
+    if (det) {
+        // Scale the integer accumulators back into the float outputs the caller
+        // expects.  Elementwise, so it introduces no ordering of its own.
+        const double inv_scale = 1.0 / fx_scale;
+        const int threads = 256;
+        auto to_float = [&](const torch::Tensor &fx, torch::Tensor &out) {
+            const int n = (int)out.numel();
+            fixed_to_float_kernel<<<
+                (n + threads - 1) / threads, threads, 0,
+                at::cuda::getCurrentCUDAStream()>>>(
+                (const long long *)fx.data_ptr<int64_t>(),
+                out.data_ptr<float>(),
+                n,
+                inv_scale
+            );
+        };
+        to_float(v_xy_fx, v_xy);
+        to_float(v_conic_fx, v_conic);
+        to_float(v_colors_fx, v_colors);
+        to_float(v_opacity_fx, v_opacity);
+    }
 
     return std::make_tuple(v_xy, v_conic, v_colors, v_opacity);
 }
@@ -818,7 +950,7 @@ project_gaussians_2d_forward_tensor(
 
     project_gaussians_2d_forward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float2 *)means2d.contiguous().data_ptr<float>(),
         (float3 *)L_elements.contiguous().data_ptr<float>(),
@@ -877,7 +1009,7 @@ project_gaussians_2d_scale_rot_forward_tensor(
 
     project_gaussians_2d_scale_rot_forward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float2 *)means2d.contiguous().data_ptr<float>(),
         (float2 *)scales2d.contiguous().data_ptr<float>(),
@@ -929,7 +1061,7 @@ project_gaussians_2d_backward_tensor(
 
     project_gaussians_2d_backward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float2 *)means2d.contiguous().data_ptr<float>(),
         (float3 *)L_elements.contiguous().data_ptr<float>(),
@@ -982,7 +1114,7 @@ project_gaussians_2d_scale_rot_backward_tensor(
 
     project_gaussians_2d_scale_rot_backward_kernel<<<
         (num_points + N_THREADS - 1) / N_THREADS,
-        N_THREADS>>>(
+        N_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         num_points,
         (float2 *)means2d.contiguous().data_ptr<float>(),
         (float2 *)scales2d.contiguous().data_ptr<float>(),

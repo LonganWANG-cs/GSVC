@@ -135,6 +135,45 @@ inline __device__ void warpSum(float& val, cg::thread_block_tile<32>& tile){
     val = cg::reduce(tile, val, cg::plus<float>());
 }
 
+// ---- deterministic gradient accumulation (FASTGSVC_DET_ATOMICS) -----------
+//
+// Every gradient in the rasterizer backward reaches global memory through
+// `atomicAdd` on a float.  Float addition is not associative, so the order in
+// which warps happen to arrive decides the last bits of every gradient, and two
+// otherwise identical runs diverge from the first step.  Integer addition IS
+// associative: convert each warp's contribution to a fixed-point integer and
+// accumulate in int64, and the total is bitwise identical whatever order the
+// atomics land in.  `fixed_to_float_kernel` converts the accumulators back.
+//
+// Scale is 2^FASTGSVC_DET_ATOMICS_SCALE_LOG2 (default 2^40): resolution 9.1e-13
+// and saturation at +/-8.4e6, which brackets this project's gradient magnitudes
+// with several orders of margin at both ends.  Overflow would wrap silently, so
+// the scale is exposed as an environment variable and validate_det_atomics.py
+// checks the fixed-point gradients against the float ones before any run.
+//
+// The product is formed in double so the conversion does not discard mantissa
+// bits the float32 value was carrying.  Only one lane per warp per Gaussian
+// executes this, so the FP64 cost is immaterial.
+inline __device__ void atomicAddFixed(long long* addr, float val, double scale) {
+    // `unsigned long long` is the only 64-bit atomicAdd CUDA provides; two's
+    // complement wraparound makes it correct for signed accumulation.
+    const long long q = __double2ll_rn((double)val * scale);
+    atomicAdd(reinterpret_cast<unsigned long long*>(addr), (unsigned long long)q);
+}
+
+__global__ void fixed_to_float_kernel(
+    const long long* __restrict__ src,
+    float* __restrict__ dst,
+    const int n,
+    const double inv_scale
+) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        dst[i] = (float)((double)src[i] * inv_scale);
+    }
+}
+
+
 __global__ void rasterize_backward_kernel(
     const dim3 tile_bounds,
     const dim3 img_size,
@@ -710,7 +749,16 @@ __global__ void rasterize_backward_sum_kernel(
     float2* __restrict__ v_xy,
     float3* __restrict__ v_conic,
     float3* __restrict__ v_rgb,
-    float* __restrict__ v_opacity
+    float* __restrict__ v_opacity,
+    // FASTGSVC_DET_ATOMICS: fixed-point mirrors of the four gradient buffers.
+    // Written instead of the float ones when `det_atomics` is set; null and
+    // untouched otherwise.
+    long long* __restrict__ v_xy_fx,
+    long long* __restrict__ v_conic_fx,
+    long long* __restrict__ v_rgb_fx,
+    long long* __restrict__ v_opacity_fx,
+    const double fx_scale,
+    const bool det_atomics
 ) {
     auto block = cg::this_thread_block();
     int32_t tile_id =
@@ -842,20 +890,37 @@ __global__ void rasterize_backward_sum_kernel(
             warpSum(v_opacity_local, warp);
             if (warp.thread_rank() == 0) {
                 int32_t g = id_batch[t];
-                float* v_rgb_ptr = (float*)(v_rgb);
-                atomicAdd(v_rgb_ptr + 3*g + 0, v_rgb_local.x);
-                atomicAdd(v_rgb_ptr + 3*g + 1, v_rgb_local.y);
-                atomicAdd(v_rgb_ptr + 3*g + 2, v_rgb_local.z);
+                if (det_atomics) {
+                    // Fixed-point accumulation: exactly associative, so the
+                    // total does not depend on the order the warps arrive in.
+                    atomicAddFixed(v_rgb_fx + 3*g + 0, v_rgb_local.x, fx_scale);
+                    atomicAddFixed(v_rgb_fx + 3*g + 1, v_rgb_local.y, fx_scale);
+                    atomicAddFixed(v_rgb_fx + 3*g + 2, v_rgb_local.z, fx_scale);
+
+                    atomicAddFixed(v_conic_fx + 3*g + 0, v_conic_local.x, fx_scale);
+                    atomicAddFixed(v_conic_fx + 3*g + 1, v_conic_local.y, fx_scale);
+                    atomicAddFixed(v_conic_fx + 3*g + 2, v_conic_local.z, fx_scale);
+
+                    atomicAddFixed(v_xy_fx + 2*g + 0, v_xy_local.x, fx_scale);
+                    atomicAddFixed(v_xy_fx + 2*g + 1, v_xy_local.y, fx_scale);
+
+                    atomicAddFixed(v_opacity_fx + g, v_opacity_local, fx_scale);
+                } else {
+                    float* v_rgb_ptr = (float*)(v_rgb);
+                    atomicAdd(v_rgb_ptr + 3*g + 0, v_rgb_local.x);
+                    atomicAdd(v_rgb_ptr + 3*g + 1, v_rgb_local.y);
+                    atomicAdd(v_rgb_ptr + 3*g + 2, v_rgb_local.z);
                 
-                float* v_conic_ptr = (float*)(v_conic);
-                atomicAdd(v_conic_ptr + 3*g + 0, v_conic_local.x);
-                atomicAdd(v_conic_ptr + 3*g + 1, v_conic_local.y);
-                atomicAdd(v_conic_ptr + 3*g + 2, v_conic_local.z);
+                    float* v_conic_ptr = (float*)(v_conic);
+                    atomicAdd(v_conic_ptr + 3*g + 0, v_conic_local.x);
+                    atomicAdd(v_conic_ptr + 3*g + 1, v_conic_local.y);
+                    atomicAdd(v_conic_ptr + 3*g + 2, v_conic_local.z);
                 
-                float* v_xy_ptr = (float*)(v_xy);
-                atomicAdd(v_xy_ptr + 2*g + 0, v_xy_local.x);
-                atomicAdd(v_xy_ptr + 2*g + 1, v_xy_local.y);
-                atomicAdd(v_opacity + g, v_opacity_local);
+                    float* v_xy_ptr = (float*)(v_xy);
+                    atomicAdd(v_xy_ptr + 2*g + 0, v_xy_local.x);
+                    atomicAdd(v_xy_ptr + 2*g + 1, v_xy_local.y);
+                    atomicAdd(v_opacity + g, v_opacity_local);
+                }
             }
         }
     }

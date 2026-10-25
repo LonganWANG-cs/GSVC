@@ -88,7 +88,21 @@ __global__ void rasterize_backward_sum_kernel(
     float2* __restrict__ v_xy,
     float3* __restrict__ v_conic,
     float3* __restrict__ v_rgb,
-    float* __restrict__ v_opacity
+    float* __restrict__ v_opacity,
+    // FASTGSVC_DET_ATOMICS fixed-point mirrors; see backward.cu.
+    long long* __restrict__ v_xy_fx,
+    long long* __restrict__ v_conic_fx,
+    long long* __restrict__ v_rgb_fx,
+    long long* __restrict__ v_opacity_fx,
+    const double fx_scale,
+    const bool det_atomics
+);
+
+__global__ void fixed_to_float_kernel(
+    const long long* __restrict__ src,
+    float* __restrict__ dst,
+    const int n,
+    const double inv_scale
 );
 
 __global__ void rasterize_backward_sum_general_kernel(

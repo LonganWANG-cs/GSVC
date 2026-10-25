@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.autograd import Function
 
 import gsplat.cuda as _C
-from .utils import bin_and_sort_gaussians, compute_cumulative_intersects
+from .utils import bin_and_sort_gaussians, compute_cumulative_intersects, resolve_intersect_capacity
 
 
 def rasterize_gaussians_sum(
@@ -116,8 +116,13 @@ class _RasterizeGaussiansSum(Function):
         block = (BLOCK_X, BLOCK_Y, 1)
         img_size = (img_width, img_height, 1)
 
-        num_intersects, cum_tiles_hit = compute_cumulative_intersects(num_tiles_hit)
-        
+        # opt3: size the intersect buffers from a per-resolution capacity instead
+        # of reading cum_tiles_hit[-1].item() every forward (a hard D2H sync that
+        # blocks CPU run-ahead). num_intersects here is the buffer *capacity*; the
+        # padded tail is sentinel-filled and skipped downstream.
+        cum_tiles_hit = torch.cumsum(num_tiles_hit, dim=0, dtype=torch.int32)
+        num_intersects = resolve_intersect_capacity(cum_tiles_hit, num_points, tile_bounds)
+
         if num_intersects < 1:
             out_img = (
                 torch.ones(img_height, img_width, colors.shape[-1], device=xys.device)

@@ -1,10 +1,14 @@
-gsplat/
-checkpoints/
-checkpoints_quant/
-Sup/
+# Build artifacts from compiling the vendored gsplat CUDA extension
+gsplat/build/
+gsplat/gsplat.egg-info/
+
+
+# Python
 __pycache__/
-models/
-output/
-Loadmodel/
-push.bat
+*.pyc
+*.pyo
+
+checkpoints/*
+checkpoints_quant/*
+sup/*
 

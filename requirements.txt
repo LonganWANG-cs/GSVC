@@ -1,0 +1,2 @@
+# Keep the original filename working while supporting the standard pip command.
+-r reqirements.txt

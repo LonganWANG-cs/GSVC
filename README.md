@@ -1,5 +1,4 @@
 # GSVC: Efficient Video Representation and Compression Through 2D Gaussian Splatting
-<!-- [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)  -->
 [![arXiv](https://img.shields.io/badge/GSVC-2501.12060-red
 )](https://arxiv.org/abs/2501.12060)
 [![GitHub Repo stars](https://img.shields.io/github/stars/LonganWANG-cs/GSVC?style=social&label=Star
@@ -10,226 +9,67 @@
 [Longan Wang](https://longanwang-cs.github.io/), [Yuang Shi](https://yuang-ian.github.io/), [Wei Tsang Ooi📧](https://www.comp.nus.edu.sg/~ooiwt/)
 (📧 denotes corresponding author.)
 
+This is the official implementation of our paper [GSVC](https://arxiv.org/abs/2501.12060), a video codec that represents each frame with overlapping 2D Gaussian splats. GSVC learns anchor frames from scratch and initializes propagation frames from their predecessors to exploit temporal redundancy. It detects scene changes from training losses, adds splats to capture large motion or newly appearing objects, and prunes low-contribution splats to control the rate-distortion trade-off.
+GSVC also supports two-pass encoding, which refines an anchor frame using splats propagated backward from a future frame. Its residual-based quantization encodes changes in Gaussian parameters between frames for efficient compression. In the paper, GSVC achieves rate-distortion performance comparable to AV1 and VVC implementations and renders 1920 × 1080 video at 1500 fps.
 
-This is the official implementation of our paper [GSVC](https://arxiv.org/abs/2501.12060), an approach to learning a set of 2D Gaussian splats that can effectively represent and compress video frames.
-GSVC incorporates the following techniques: 
-(i) To exploit temporal redundancy among adjacent frames, which can speed up training and improve the compression efficiency, we predict the Gaussian splats of a frame based on its previous frame.
-(ii) To control the trade-offs between file size and quality, we remove Gaussian splats with low contribution to the video quality; (iii) To capture dynamics in videos, we randomly add Gaussian splats to fit content with large motion or newly-appeared objects;
-(iv) To handle significant changes in the scene, we detect key frames based on loss differences during the learning process.  
-Experiment results show that GSVC achieves good rate-distortion trade-offs, comparable to state-of-the-art video codecs such as AV1 and HEVC, and a rendering speed of 1500 fps for a 1920×1080 video.
-More qualitative results can be found in our paper.
+
+
+## Experimental Results
+
+Following the rate-distortion presentation in the extended paper, we report PSNR, MS-SSIM, and VMAF together for each benchmark. The plots compare GSVC with the evaluated video-codec baselines; the complete, machine-readable measurements are linked below.
 
 <figure style="text-align: center;">
   <div>
-    <img src="./img/q_UVG_Bpp_vs_PSNR.png" alt="UVG_PSNR" width="239" />
-    <img src="./img/q_UVG_Bpp_vs_MS-SSIM.png" alt="UVG_MSSSIM" width="239" />
-    <img src="./img/q_UVG_Bpp_vs_VMAF.png" alt="UVG_VMAF" width="320" />
+    <img src="./img/q_UVG_Bpp_vs_PSNR.png" alt="UVG rate-distortion curve: Bpp versus PSNR" width="30%" />
+    <img src="./img/q_UVG_Bpp_vs_MS-SSIM.png" alt="UVG rate-distortion curve: Bpp versus MS-SSIM" width="30%" />
+    <img src="./img/q_UVG_Bpp_vs_VMAF.png" alt="UVG rate-distortion curve: Bpp versus VMAF" width="38%" />
   </div>
-  <figcaption><strong>Figure 1:</strong> Rate-Distortion Curves in PSNR, MS-SSIM, and VMAF: comparison of our approach with baselines.</figcaption>
+  <figcaption><strong>Figure 1:</strong> Rate-distortion performance on UVG.</figcaption>
 </figure>
-
-<!-- <figure style="text-align: center;">
-  <table style="margin: 0 auto;">
-    <thead>
-      <tr>
-        <th>Bpp</th>
-        <th>PSNR</th>
-        <th>MS-SSIM</th>
-        <th>VMAF</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>0.2076</td>
-        <td>33.92983</td>
-        <td>0.93157</td>
-        <td>87.9589</td>
-      </tr>
-      <tr>
-        <td>0.4132</td>
-        <td>35.73157</td>
-        <td>0.95497</td>
-        <td>93.9834</td>
-      </tr>
-      <tr>
-        <td>0.6198</td>
-        <td>36.72493</td>
-        <td>0.96263</td>
-        <td>94.9507</td>
-      </tr>
-      <tr>
-        <td>0.8176</td>
-        <td>37.32610</td>
-        <td>0.96688</td>
-        <td>95.6774</td>
-      </tr>
-      <tr>
-        <td>1.0424</td>
-        <td>37.72213</td>
-        <td>0.97000</td>
-        <td>96.1375</td>
-      </tr>
-    </tbody>
-  </table>
-  <figcaption><strong>Table 1:</strong> GSVC Rate-Distortion Metrics on UVG: PSNR, MS-SSIM, and VMAF.</figcaption>
-</figure> -->
 
 <figure style="text-align: center;">
-  <table style="margin: 0 auto;">
-    <thead>
-      <tr>
-        <th colspan="4">Beauty</th>
-        <th colspan="4">HoneyBee</th>
-        <th colspan="4">Jockey</th>
-        <th colspan="4">Average</th>
-      </tr>
-      <tr>
-        <th>Bpp</th>
-        <th>PSNR</th>
-        <th>MS-SSIM</th>
-        <th>VMAF</th>
-        <th>Bpp</th>
-        <th>PSNR</th>
-        <th>MS-SSIM</th>
-        <th>VMAF</th>
-        <th>Bpp</th>
-        <th>PSNR</th>
-        <th>MS-SSIM</th>
-        <th>VMAF</th>
-        <th>Bpp</th>
-        <th>PSNR</th>
-        <th>MS-SSIM</th>
-        <th>VMAF</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>0.21</td>
-        <td>33.72</td>
-        <td>0.90</td>
-        <td>92.20</td>
-        <td>0.20</td>
-        <td>34.61</td>
-        <td>0.97</td>
-        <td>95.15</td>
-        <td>0.20</td>
-        <td>33.44</td>
-        <td>0.92</td>
-        <td>76.51</td>
-        <td>0.20</td>
-        <td>33.92</td>
-        <td>0.93</td>
-        <td>87.95</td>
-      </tr>
-      <tr>
-        <td>0.41</td>
-        <td>34.28</td>
-        <td>0.91</td>
-        <td>94.01</td>
-        <td>0.39</td>
-        <td>36.8</td>
-        <td>0.98</td>
-        <td>96.00</td>
-        <td>0.42</td>
-        <td>36.02</td>
-        <td>0.96</td>
-        <td>91.93</td>
-        <td>0.41</td>
-        <td>35.73</td>
-        <td>0.95</td>
-        <td>93.98</td>
-      </tr>
-      <tr>
-        <td>0.60</td>
-        <td>34.70</td>
-        <td>0.92</td>
-        <td>94.96</td>
-        <td>0.60</td>
-        <td>37.83</td>
-        <td>0.98</td>
-        <td>96.30</td>
-        <td>0.64</td>
-        <td>37.63</td>
-        <td>0.97</td>
-        <td>93.58</td>
-        <td>0.61</td>
-        <td>36.72</td>
-        <td>0.96</td>
-        <td>94.95</td>
-      </tr>
-      <tr>
-        <td>0.77</td>
-        <td>35.02</td>
-        <td>0.93</td>
-        <td>95.49</td>
-        <td>0.81</td>
-        <td>38.35</td>
-        <td>0.98</td>
-        <td>96.34</td>
-        <td>0.86</td>
-        <td>38.59</td>
-        <td>0.97</td>
-        <td>95.19</td>
-        <td>0.81</td>
-        <td>37.32</td>
-        <td>0.96</td>
-        <td>95.67</td>
-      </tr>
-      <tr>
-        <td>1.00</td>
-        <td>35.38</td>
-        <td>0.94</td>
-        <td>95.86</td>
-        <td>1.03</td>
-        <td>38.71</td>
-        <td>0.98</td>
-        <td>96.39</td>
-        <td>1.07</td>
-        <td>39.06</td>
-        <td>0.98</td>
-        <td>96.15</td>
-        <td>1.04</td>
-        <td>37.72</td>
-        <td>0.97</td>
-        <td>96.13</td>
-      </tr>
-    </tbody>
-  </table>
-  <figcaption><strong>Table 1:</strong> Rate-Distortion Metrics of GSVC for Beauty, HoneyBee, Jockey, and Average in PSNR, MS-SSIM, and VMAF.</figcaption>
+  <div>
+    <img src="./img/q_HEVC-B_Bpp_vs_PSNR.png" alt="HEVC Class B rate-distortion curve: Bpp versus PSNR" width="30%" />
+    <img src="./img/q_HEVC-B_Bpp_vs_MS-SSIM.png" alt="HEVC Class B rate-distortion curve: Bpp versus MS-SSIM" width="30%" />
+    <img src="./img/q_HEVC-B_Bpp_vs_VMAF.png" alt="HEVC Class B rate-distortion curve: Bpp versus VMAF" width="38%" />
+  </div>
+  <figcaption><strong>Figure 2:</strong> Rate-distortion performance on HEVC Class B.</figcaption>
 </figure>
 
+| Benchmark | Metrics | Complete results |
+| --- | --- | --- |
+| UVG | Bpp, PSNR, MS-SSIM, VMAF | [Download CSV](./img/UVG.csv) |
+| HEVC Class B | Bpp, PSNR, MS-SSIM, VMAF | [Download CSV](./img/HEVC-Class-B.csv) |
+
+### Frame Structure Used in the Experiments
+
+The frame structure used to learn the Gaussian representations is separate from the I/P-frame structure used during quantization.
+
+- **UVG overfitting:** anchor frames are selected by DKS. In the reported UVG experiments, only the first frame was selected as an anchor; all remaining frames were propagation frames.
+- **HEVC Class B overfitting:** the base GOP contains one anchor frame followed by four propagation frames (`APPPP`). DKS can insert additional anchor frames at detected scene changes. Here, `A` denotes an anchor and `P` denotes a propagation frame.
+- **Quantization:** every overfitting anchor frame is encoded as an I-frame. In addition, periodic I-frames follow an `IPPPP` pattern (`--I_interval 5`) to limit quantization error propagation. **Jockey and YachtRide** use `IPP` (`--I_interval 3`) instead. Anchor frames therefore introduce additional I-frames beyond this periodic pattern.
+
+An overfitting anchor is a representation learned independently; a quantization I-frame stores absolute quantized Gaussian parameters. All anchors are I-frames, while periodic I-frames may also occur on propagation frames.
 
 ## News
 
 * **2025/2/1**: 🔥 We release our Python and CUDA code for GSVC presented in our paper. Have a try!
 
-<!-- * **2025/2/1**: 🌟 Our paper has been accepted by NOSSDAV 2025! 🎉 Cheers! -->
-
 ## Insight
-Figure 2 and Figure 3 illustrate how Gaussian splats can serve as a primitive for representing an image, and how the training process iteratively optimizes the parameters of the Gaussian splats to fit a given image.
+Figures 3 and 4 illustrate how Gaussian splats can serve as a primitive for representing an image, and how the training process iteratively optimizes the parameters of the Gaussian splats to fit a given image.
 <figure style="text-align: center;">
   <div>
     <img src="./img/Insight1.png" alt="Insight"/>
   </div>
-  <figcaption><strong>Figure 2:</strong> Using Gaussian splats to model an image. Image is taken from UVG Jockey video. The sub-figures show that as the number of Gaussian splats N increases, the learned splats increasingly approximate the image’s content.</figcaption>
+  <figcaption><strong>Figure 3:</strong> Using Gaussian splats to model an image. Image is taken from UVG Jockey video. The sub-figures show that as the number of Gaussian splats N increases, the learned splats increasingly approximate the image’s content.</figcaption>
 </figure>
 
 <figure style="text-align: center;">
   <div>
     <img src="./img/Insight2.png" alt="Insight" />
   </div>
-  <figcaption><strong>Figure 3:</strong> Image taken from UVG Jockey video. Intermediate training results after t iterations for 10,000 Gaussian splats, illustrating how Gaussian splats parameters are optimized to fit the content of a frame.</figcaption>
+  <figcaption><strong>Figure 4:</strong> Image taken from UVG Jockey video. Intermediate training results after t iterations for 10,000 Gaussian splats, illustrating how Gaussian splats parameters are optimized to fit the content of a frame.</figcaption>
 </figure>
-
-## Overview
-
-We propose a novel video representation and compression framework termed GSVC based on 2D Gaussian splats. Similar to modern video codecs, GSVC categorizes video frames into key-frames (Iframe) and predicted frames (P-frames).
-Gaussian splats representation for the I-frame is learned from scratch while,
-for P-frames, it is learned incrementally from its previous frame.
-The predicted frames allow us to exploit temporal redundancy among the frames.
-To allow rate control to trade off between compression rate and quality, GSVC prunes Gaussian splats with low contributions to the frame quality.
-To cater to video dynamics, GSVC augments each Pframe with random splats before optimization. Finally, we monitor the loss values when learning the splats of each frame to determine if a frame should be an I-frame or a P-frame. 
-This step allows GSVC to detect significant changes in the scene.
 
 
 ## Play with Our Code
@@ -249,77 +89,183 @@ After cloning the repository, you can follow these steps to train GSVC models un
 
 ### Requirements
 
-We are using `python version 3.9` and `torch cuda runtime 12.4`. Before running the below code, please make sure `torch` is installed.
+Use Linux with an NVIDIA GPU, a compatible driver, a CUDA toolkit (`nvcc`), and a C++ compiler. The tested baseline is **Python 3.8, PyTorch 2.3.1 + CUDA 12.1, and the bundled gsplat 0.1.3**. Run the following from the repository root; you may use any environment name.
 
 ```bash
-cd gsplat
-pip install .[dev]
-cd ../
-pip install -r requirements.txt
+conda create -n pGS_GSVC_extension python=3.8 -y
+conda activate pGS_GSVC_extension
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install torch==2.3.1 torchvision==0.18.1 \
+  --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r requirements.txt
 ```
 
-If you encounter errors while installing the packages listed in requirements.txt, you can try installing each Python package individually using the pip command.
+The PyTorch command follows the [official installation instructions](https://pytorch.org/get-started/previous-versions/#v231). `requirements.txt` references the original `reqirements.txt`; either filename works.
 
-Before training, you need to download the [UVG](https://ultravideo.fi/dataset.html). 
+#### Install gsplat
+
+After installing PyTorch and the Python dependencies, run the installer on a GPU machine:
+
+```bash
+bash ensure_gsvc_gsplat.sh
+```
+
+The script detects the active Python environment, CUDA toolkit, and GPU architecture, installs gsplat dependencies, and builds the bundled extension. Re-running it reuses a matching build. A CUDA toolkit with `nvcc` and a compatible C++ compiler must be installed separately; PyTorch's bundled CUDA runtime does not include `nvcc`.
+
+If the toolkit is not detected, specify its path, for example:
+
+```bash
+CUDA_HOME=/usr/local/cuda-12.1 bash ensure_gsvc_gsplat.sh
+```
+
+Use a toolkit compatible with your PyTorch build. The script also accepts `TORCH_CUDA_ARCH_LIST` for custom GPU targets.
+
+#### Data and Runtime Configuration
+
+Download [UVG](https://ultravideo.fi/dataset.html) or use another raw **8-bit YUV420** sequence. Set its path, name, width, and height; the default resolution is 1920 × 1080.
+
+Training parameters are command-line arguments. Runtime defaults are in `gsvc_runtime.py`, with `GSVC_*` environment overrides taking precedence. Effective settings and environment information are logged at startup. No exports are needed for the defaults.
+
+Deterministic integer accumulation is off by default because rounding can reduce gradient precision and reconstruction quality. For a reproducibility run, keep seeds, settings, hardware, and software fixed and optionally override:
+
+```bash
+export GSVC_DET_ATOMICS=1
+export GSVC_DETERMINISTIC_TORCH=1
+```
+
+Alternatively, set both defaults to `"1"` in `gsvc_runtime.py`. Initialization supplies `CUBLAS_WORKSPACE_CONFIG=:4096:8` automatically when determinism is enabled and the variable is unset.
+
+### File Structure and Three-Stage Workflow
+
+```text
+.
+├── train_GSVC_overfitting.py  # Learn per-frame Gaussian representations.
+├── GSVC_overfitting.py        # Gaussian model and representation optimization.
+├── train_GSVC_encoder.py      # Quantization-aware optimization and checkpoint export.
+├── GSVC_encoder.py            # I/P-frame quantization models.
+├── test_GSVC_decoder.py       # Dequantize checkpoints, render frames, and evaluate.
+├── GSVC_decoder.py            # Reconstruct Gaussian parameters for rendering.
+├── quantize.py                # Scalar/vector quantizers and bit-accounting helpers.
+├── optimizer.py               # Adan optimizer.
+├── utils.py                   # Data loading, metrics, logging, and video output.
+├── gsvc_runtime.py            # Shared runtime defaults and environment configuration.
+├── gsplat/                    # Bundled Python/CUDA rasterization extension.
+├── ensure_gsvc_gsplat.sh       # Install/check the bundled CUDA extension.
+├── sh_train_GSVC_example.sh    # Optional batch example running all three stages.
+├── requirements.txt           # Standard dependency-list entry point.
+├── reqirements.txt            # Runtime dependency list, retaining the original name.
+├── checkpoints/               # Generated overfitting models, logs, and previews.
+├── checkpoints_quant/         # Generated quantized models and decoded previews.
+└── output/                    # Optional batch-job logs.
+```
+
+**Overfitting** generates a Gaussian representation for each frame. **Encoder** compresses that representation through quantization and saves quantized values, and reconstruction metadata. **Decoder** dequantizes the saved values, reconstructs absolute or residual Gaussian parameters, and renders the frames without retraining.
+
+The encoder saves quantized data in a PyTorch checkpoint. Its serialized `.pth` size includes metadata and is not the reported parameter bitrate.
 
 ### Manual Training Example
-This repository provides scripts for video representation and compression using Gaussian models. The workflow involves two key steps:
 
-1. **Video Representation:** Overfit a video using Gaussian splatting to obtain a detailed model.
-2. **Video Compression:** Compress the overfitted model to reduce file size while maintaining quality.
+With your environment activated and gsplat installed, run all three stages from the repository root in the same shell.
 
-#### Step 1: Video Representation
-Run `train_video_Represent.py` to generate the overfitted model:
+This example uses **Beauty's first 50 frames**, **10,000 points**, and **50,000 iterations per frame**. Preview videos use **24 FPS**, without resampling the input frames.
 
 ```bash
-python train_video_Represent.py \
+DATASET=/path/to/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
+DATA_NAME=Beauty
+ITERATIONS=50000
+IMAGE_LENGTH=50
+NUM_POINTS=10000
+```
+
+#### Step 1: Overfitting — Generate Gaussian Representations
+
+```bash
+python train_GSVC_overfitting.py \
+  --dataset "${DATASET}" \
+  --data_name "${DATA_NAME}" \
+  --width 1920 --height 1080 \
   --loss_type L2 \
-  --dataset /home/e/e1344641/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv \
-  --data_name Beauty \
-  --num_points 10000 \
-  --savdir GaussianVideo_results \
-  --savdir_m GaussianVideo_models \
-  --iterations 100000 \
-  --is_rm --is_ad
+  --num_points "${NUM_POINTS}" \
+  --savdir GSVC_overfitting_UVG \
+  --savdir_m GSVC_overfitting_UVG_m \
+  --iterations "${ITERATIONS}" \
+  --image_length "${IMAGE_LENGTH}" \
+  --fps 24 --seed 1 \
+  --look_ahead 1 --is_rm --is_ad --save_everyframes
 ```
 
-#### Step 2: Video Compression
-Run `train_video_Compress.py` to compress the video using the overfitted model:
+`--look_ahead 1` enables two-pass refinement; `--is_rm` enables pruning and `--is_ad` enables adaptive Gaussian control. Look-ahead and DKS preprocessing add work beyond the main per-frame iteration budget.
+
+The Gaussian representation checkpoint is saved to:
+
+```text
+checkpoints/GSVC_overfitting_UVG_m/Beauty/GaussianVideo_50000_10000/gmodels_state_dict.pth
+```
+
+
+#### Step 2: Encoder — Quantize and Save the Compressed Representation
 
 ```bash
-python train_video_Compress.py \
-  --dataset /home/e/e1344641/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv \
-  --model_path /home/e/e1344641/GaussianVideo/checkpoints/GaussianVideo_models/Beauty/GaussianVideo_100000_10000/gmodels_state_dict.pth \
-  --data_name Beauty \
-  --num_points 10000 \
-  --savdir GaussianVideo_results \
-  --savdir_m GaussianVideo_models \
-  --iterations 50000 \
-  --is_rm
+MODEL_PATH="checkpoints/GSVC_overfitting_UVG_m/${DATA_NAME}/GaussianVideo_${ITERATIONS}_${NUM_POINTS}/gmodels_state_dict.pth"
+
+python train_GSVC_encoder.py \
+  --model_path "${MODEL_PATH}" \
+  --dataset "${DATASET}" \
+  --data_name "${DATA_NAME}" \
+  --width 1920 --height 1080 \
+  --num_points "${NUM_POINTS}" \
+  --savdir GSVC_encode_UVG \
+  --savdir_m GSVC_encode_UVG_m \
+  --iterations "${ITERATIONS}" \
+  --image_length "${IMAGE_LENGTH}" \
+  --fps 24 --seed 1 \
+  --I_interval 5 --is_rm --save_everyimgs
 ```
 
-### SLURM Job Scripts
+`--I_interval 5` adds periodic I-frames in an `IPPPP` pattern; use `3` for Jockey or YachtRide (`IPP`). All overfitting anchors must also be I-frames.
 
-For automated training and compression on SLURM, `.sh` files are provided:
+The encoder saves the quantized checkpoint to:
 
-- **Complete Workflow:** Run `sh_train_compression.sh` to perform both representation and compression.
+```text
+checkpoints_quant/GSVC_encode_UVG_m/Beauty/GaussianVideo_50000_10000/encoded_gmodels_state_dict.pth
+```
 
-  ```bash
-  sbatch sh_train_compression.sh
-  ```
+#### Step 3: Decoder — Dequantize and Render
 
-- **Representation Only:** Run `sh_train_representation.sh` if you only want to train the model without compression.
+```bash
+ENCODED_PATH="checkpoints_quant/GSVC_encode_UVG_m/${DATA_NAME}/GaussianVideo_${ITERATIONS}_${NUM_POINTS}/encoded_gmodels_state_dict.pth"
 
-  ```bash
-  sbatch sh_train_representation.sh
-  ```
+python test_GSVC_decoder.py \
+  --model_path "${ENCODED_PATH}" \
+  --dataset "${DATASET}" \
+  --data_name "${DATA_NAME}" \
+  --width 1920 --height 1080 \
+  --savdir GSVC_decode_UVG \
+  --image_length "${IMAGE_LENGTH}" \
+  --fps 24 --save_imgs
+```
+
+The decoder reconstructs I/P frames from the quantized checkpoint without retraining. Its CLI uses the reference YUV sequence for dimensions and PSNR/MS-SSIM evaluation.
+
+Decoded PNGs, logs, and `video/video.mp4` are placed under:
+
+```text
+checkpoints_quant/GSVC_decode_UVG/Beauty/GaussianVideo_<frame_point_count>/
+```
 
 
+### Optional: Batch Execution
 
+The manual commands above work on a local GPU machine or GPU server without a scheduler. For Slurm users, `sh_train_GSVC_example.sh` runs all three stages. Adjust its repository path, environment, dataset, and resource settings, then submit:
 
+```bash
+mkdir -p output  # Create before submission so the scheduler can open its logs.
+sbatch sh_train_GSVC_example.sh
+```
 
+The batch script uses 50 frames, 50,000 iterations, and several point budgets. For Jockey or YachtRide, change its encoder argument to `--I_interval 3`.
 
-
+On shared clusters, run CUDA builds and training on an allocated GPU node.
 
 ## Acknowledgments
 
