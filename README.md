@@ -53,6 +53,7 @@ An overfitting anchor is a representation learned independently; a quantization 
 
 ## News
 
+* **2026/10/25**: 🔥 Updated GSVC code, experimental results, and installation instructions. The original release is preserved in [GSVC-25-2-1](https://github.com/LonganWANG-cs/GSVC/tree/GSVC-25-2-1); see [P-GSVC](https://github.com/LonganWANG-cs/PGSVC) for layered progressive image and video representation.
 * **2025/2/1**: 🔥 We release our Python and CUDA code for GSVC presented in our paper. Have a try!
 
 ## Insight
