@@ -16,7 +16,7 @@ GSVC also supports two-pass encoding, which refines an anchor frame using splats
 
 ## Experimental Results
 
-We report PSNR, MS-SSIM, and VMAF together for each benchmark. The plots compare GSVC with the evaluated video-codec baselines; the complete, machine-readable measurements are linked below.
+We report the rate–distortion results on UVG in the following figure.
 
 <figure style="text-align: center;">
   <div>
@@ -25,15 +25,6 @@ We report PSNR, MS-SSIM, and VMAF together for each benchmark. The plots compare
     <img src="./img/q_UVG_Bpp_vs_VMAF.png" alt="UVG rate-distortion curve: Bpp versus VMAF" width="38%" />
   </div>
   <figcaption><strong>Figure 1:</strong> Rate-distortion performance on UVG.</figcaption>
-</figure>
-
-<figure style="text-align: center;">
-  <div>
-    <img src="./img/q_HEVC-B_Bpp_vs_PSNR.png" alt="HEVC Class B rate-distortion curve: Bpp versus PSNR" width="30%" />
-    <img src="./img/q_HEVC-B_Bpp_vs_MS-SSIM.png" alt="HEVC Class B rate-distortion curve: Bpp versus MS-SSIM" width="30%" />
-    <img src="./img/q_HEVC-B_Bpp_vs_VMAF.png" alt="HEVC Class B rate-distortion curve: Bpp versus VMAF" width="38%" />
-  </div>
-  <figcaption><strong>Figure 2:</strong> Rate-distortion performance on HEVC Class B.</figcaption>
 </figure>
 
 | Benchmark | Metrics | Complete results |
@@ -53,7 +44,7 @@ An overfitting anchor is a representation learned independently; a quantization 
 
 ## News
 
-* **2026/10/25**: 🔥 Updated GSVC code, experimental results, and installation instructions. The original release is preserved in [GSVC-25-2-1](https://github.com/LonganWANG-cs/GSVC/tree/GSVC-25-2-1); see [P-GSVC](https://github.com/LonganWANG-cs/PGSVC) for layered progressive image and video representation.
+* **2026/10/26**: 🔥 Updated GSVC code, experimental results, and installation instructions. 
 * **2025/2/1**: 🔥 We release our Python and CUDA code for GSVC presented in our paper. Have a try!
 
 ## Insight
@@ -159,9 +150,9 @@ Alternatively, set both defaults to `"1"` in `gsvc_runtime.py`. Initialization s
 └── output/                    # Optional batch-job logs.
 ```
 
-**Overfitting** generates a Gaussian representation for each frame. **Encoder** compresses that representation through quantization and saves quantized values, and reconstruction metadata. **Decoder** dequantizes the saved values, reconstructs absolute or residual Gaussian parameters, and renders the frames without retraining.
+**Overfitting** generates a Gaussian representation for each frame. **Encoder** compresses that representation through quantization and entropy coding, and saves quantized values with reconstruction metadata (e.g. code books, scaling and offset factors). **Decoder** dequantizes the saved values, reconstructs absolute or residual Gaussian parameters, and renders the frames without retraining.
 
-The encoder saves quantized data in a PyTorch checkpoint. Its serialized `.pth` size includes metadata and is not the reported parameter bitrate.
+The pipeline is **overfitting → encoder → decoder**. The encoder saves quantized data in a PyTorch checkpoint. Its serialized `.pth` size does not reflect the reported parameter bitrate, which is calculated after entropy encoding.
 
 ### Manual Training Example
 
@@ -272,16 +263,3 @@ On shared clusters, run CUDA builds and training on an allocated GPU node.
 Our code was developed based on [GaussianImage](https://github.com/Xinjie-Q/GaussianImage). 
 This is a paradigm of image representation and compression by 2D Gaussian Splatting.
 
-
-## Citation
-
-If you find our GSVC useful or relevant to your research, please kindly cite our paper:
-
-```
-@article{wang2025gsvc,
-  title={GSVC: Efficient Video Representation and Compression Through 2D Gaussian Splatting},
-  author={Wang, Longan and Shi, Yuang and Ooi, Wei Tsang},
-  journal={arXiv preprint arXiv:2501.12060},
-  year={2025}
-}
-```
