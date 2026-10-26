@@ -11,4 +11,5 @@ __pycache__/
 checkpoints/*
 checkpoints_quant/*
 sup/*
+Loadmodel/*
 

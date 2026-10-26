@@ -1,14 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=GT_7
-#SBATCH --output=output/GT_7_o.txt
-#SBATCH --error=output/GT_7_e.txt
+#SBATCH --job-name=GSVC
+#SBATCH --output=output/GSVC_o.txt
+#SBATCH --error=output/GSVC_e.txt
 #SBATCH --time=72:00:00
 #SBATCH --gres=gpu:h100-47:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16G
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=wanglongan@comp.nus.edu.sg
 
 # Before submitting from the repository root:
 # mkdir -p output && sbatch sh_train_GSVC_example.sh
@@ -19,7 +18,7 @@ conda activate "${CONDA_ENV:-pGS_GSVC_extension}"
 # Enable nounset after loading shell/conda initialization.
 set -u
 
-ROOT="/home/e/e1344641/GSVC_extension"
+ROOT="/home/GSVC_extension"
 cd "$ROOT"
 PYTHON_SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
 export PYTHONPATH="${ROOT}:${PYTHON_SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
@@ -30,9 +29,9 @@ source "$ROOT/ensure_gsvc_gsplat.sh"
 ensure_gsvc_gsplat
 
 
-DATASET_PATH="${DATASET_PATH:-/home/e/e1344641/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv}"
+DATASET_PATH="${DATASET_PATH:-/home/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv}"
 DATA_NAME="${DATA_NAME:-Beauty}"
-# DATA_NAME="ShakeNDry" 
+
 
 # DATASET_PATH="/home/data/UVG/Beauty/Beauty_1920x1080_120fps_420_8bit_YUV.yuv" #Change to your own dataset path
 # DATA_NAME="Beauty"  #Change to your own dataset name
