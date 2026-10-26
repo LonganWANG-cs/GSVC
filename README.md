@@ -16,7 +16,7 @@ GSVC also supports two-pass encoding, which refines an anchor frame using splats
 
 ## Experimental Results
 
-Following the rate-distortion presentation in the extended paper, we report PSNR, MS-SSIM, and VMAF together for each benchmark. The plots compare GSVC with the evaluated video-codec baselines; the complete, machine-readable measurements are linked below.
+We report PSNR, MS-SSIM, and VMAF together for each benchmark. The plots compare GSVC with the evaluated video-codec baselines; the complete, machine-readable measurements are linked below.
 
 <figure style="text-align: center;">
   <div>
